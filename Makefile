@@ -1,6 +1,6 @@
 EPUBCHECK_JAR ?= $(HOME)/tools/epubcheck-5.3.0/epubcheck.jar
 
-.PHONY: build test godog-test bench stress-test crawl crawl-validate crawl-report clean help
+.PHONY: build test godog-test bench stress-test crawl crawl-validate crawl-report toolchain-generate toolchain-validate toolchain-all clean help
 
 build:                       ## Build the binary
 	go build -o epubverify .
@@ -28,6 +28,14 @@ crawl-report:                ## Generate crawl discrepancy report
 	bash scripts/crawl-report.sh
 
 crawl-all: crawl crawl-validate crawl-report  ## Full crawl pipeline
+
+toolchain-generate:          ## Generate EPUBs with pandoc and calibre
+	bash stress-test/toolchain-epubs/generate-epubs.sh
+
+toolchain-validate: build    ## Validate toolchain EPUBs with both validators
+	bash stress-test/toolchain-epubs/validate-epubs.sh
+
+toolchain-all: toolchain-generate toolchain-validate  ## Full toolchain pipeline
 
 bench: build                 ## Benchmark vs reference epubcheck
 	@echo "=== epubverify ===" && time ./epubverify testdata/fixtures/epub3/00-minimal/minimal.epub --json /dev/null 2>/dev/null

@@ -8,6 +8,8 @@ stress-test/crawl-epubs/
 stress-test/crawl-results/
 stress-test/crawl-manifest.json
 stress-test/crawl-report.txt
+stress-test/toolchain-epubs/epubs/
+stress-test/toolchain-epubs/results/
 testdata/synthetic/synth_*.epub
 testdata/synthetic/manifest.json
 testdata/synthetic/comparison_results.json

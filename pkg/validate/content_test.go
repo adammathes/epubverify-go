@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/adammathes/epubverify/pkg/report"
@@ -1378,5 +1379,240 @@ func TestCheckLinkSizes_SizesWithRelIcon(t *testing.T) {
 		if m.CheckID == "RSC-005" {
 			t.Errorf("unexpected RSC-005 for link sizes with rel=icon: %s", m.Message)
 		}
+	}
+}
+
+// --- Tests for checkInvalidIDValues (colon-containing IDs) ---
+
+func TestCheckInvalidIDValues_ColonInID(t *testing.T) {
+	// Calibre generates footnote IDs like fn:1 and fnref:2 which contain colons.
+	// These are not valid XML NCNames.
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<p>Text<sup id="fnref:1">1</sup></p>
+<div id="fn:1"><p>Footnote</p></div>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkInvalidIDValues([]byte(xhtml), "test.xhtml", r)
+
+	found := 0
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "without colons") {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Errorf("expected 2 RSC-005 errors for colon IDs, got %d", found)
+	}
+}
+
+func TestCheckInvalidIDValues_ValidIDs(t *testing.T) {
+	// Standard IDs without colons should not trigger errors.
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<p id="para1">Text</p>
+<div id="chapter-one"><p id="_note">Note</p></div>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkInvalidIDValues([]byte(xhtml), "test.xhtml", r)
+
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "without colons") {
+			t.Errorf("unexpected RSC-005 for valid ID: %s", m.Message)
+		}
+	}
+}
+
+func TestCheckInvalidIDValues_MultipleColons(t *testing.T) {
+	// IDs with multiple colons like xml:id:value
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body><p id="ns:sub:value">Text</p></body>
+</html>`
+
+	r := report.NewReport()
+	checkInvalidIDValues([]byte(xhtml), "test.xhtml", r)
+
+	found := 0
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "without colons") {
+			found++
+		}
+	}
+	if found != 1 {
+		t.Errorf("expected 1 RSC-005 for colon ID, got %d", found)
+	}
+}
+
+// --- Tests for checkHTML5ElementsEPUB2 ---
+
+func TestCheckHTML5ElementsEPUB2_ArticleElement(t *testing.T) {
+	// HTML5 <article> element is not valid in EPUB 2 XHTML 1.1
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<article><p>Content</p></article>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "article") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <article> in EPUB 2, got none")
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_FooterElement(t *testing.T) {
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<footer><p>Footer content</p></footer>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "footer") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <footer> in EPUB 2, got none")
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_MarkElement(t *testing.T) {
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<p>Some <mark>highlighted</mark> text.</p>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "mark") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <mark> in EPUB 2, got none")
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_TimeElement(t *testing.T) {
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<p>Published on <time datetime="2024-01-15">January 15</time>.</p>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "time") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <time> in EPUB 2, got none")
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_NoHTML5Elements(t *testing.T) {
+	// Valid EPUB 2 XHTML with only standard elements — no errors expected
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<h1>Chapter</h1>
+<p>A <strong>paragraph</strong> with <em>formatting</em>.</p>
+<div><p>A div with content.</p></div>
+<table><tr><td>Cell</td></tr></table>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" {
+			t.Errorf("unexpected RSC-005 for valid EPUB 2 XHTML: %s", m.Message)
+		}
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_AsideElement(t *testing.T) {
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<aside><p>Sidebar content.</p></aside>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "aside") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <aside> in EPUB 2, got none")
+	}
+}
+
+func TestCheckHTML5ElementsEPUB2_HeaderElement(t *testing.T) {
+	xhtml := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Test</title></head>
+<body>
+<header><h1>Title</h1></header>
+</body>
+</html>`
+
+	r := report.NewReport()
+	checkHTML5ElementsEPUB2([]byte(xhtml), "test.xhtml", r)
+
+	found := false
+	for _, m := range r.Messages {
+		if m.CheckID == "RSC-005" && strings.Contains(m.Message, "header") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected RSC-005 for <header> in EPUB 2, got none")
 	}
 }

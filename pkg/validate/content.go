@@ -318,6 +318,14 @@ func checkContentWithSkips(ep *epub.EPUB, r *report.Report, skipFiles map[string
 			// RSC-005: link sizes only on rel=icon
 			checkLinkSizes(data, fullPath, r)
 		}
+
+		// EPUB 2-specific checks: HTML5 elements not allowed in XHTML 1.1
+		if ep.Package.Version < "3.0" {
+			checkHTML5ElementsEPUB2(data, fullPath, r)
+		}
+
+		// RSC-005: id attribute values must be valid XML NCNames (no colons)
+		checkInvalidIDValues(data, fullPath, r)
 	}
 }
 
@@ -4998,6 +5006,32 @@ func checkHTML5ElementsEPUB2(data []byte, location string, r *report.Report) {
 				fmt.Sprintf(`element "%s" not allowed here`, se.Name.Local),
 				location)
 			return
+		}
+	}
+}
+
+// checkInvalidIDValues detects id attribute values that are not valid XML NCNames (RSC-005).
+// XML NCNames cannot contain colons and must start with a letter or underscore.
+// This catches calibre-generated IDs like "fn:1" and "fnref:2".
+func checkInvalidIDValues(data []byte, location string, r *report.Report) {
+	decoder := newXHTMLDecoder(strings.NewReader(string(data)))
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		for _, attr := range se.Attr {
+			if attr.Name.Local == "id" && attr.Value != "" {
+				if strings.Contains(attr.Value, ":") {
+					r.AddWithLocation(report.Error, "RSC-005",
+						fmt.Sprintf(`value of attribute "id" is invalid; must be an XML name without colons`),
+						location)
+				}
+			}
 		}
 	}
 }

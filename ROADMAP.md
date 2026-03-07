@@ -2,7 +2,7 @@
 
 ## DATE UPDATED
 
-February 26, 2026
+February 28, 2026
 
 ---
 
@@ -18,6 +18,7 @@ February 26, 2026
 | **Diverse stress test** | 84 EPUBs from 10+ sources, 73/84 match (86.9%) | KBNL, Thorium, DAISY, Readium, bmaupin, pmstss, Pressbooks, manga, filesamples, hand-crafted edge cases |
 | **Crawl stress test** | 19 EPUBs crawled, 18/19 match (94.7%) | 4 sources live-tested: Gutenberg, Standard Ebooks, Feedbooks, OAPEN |
 | **Synthetic EPUBs** | 29/29 match epubcheck | Purpose-built edge cases |
+| **Toolchain EPUBs** | 20/20 match epubcheck (100%) | Pandoc (9) + Calibre (10) + EPUB2 (1) |
 
 ### Where We Have Confidence
 
@@ -82,19 +83,30 @@ The crawler currently covers Gutenberg, Standard Ebooks, Feedbooks, OAPEN, and I
 
 Goal: catch edge cases that well-curated sources don't exercise (broken metadata, unusual encodings, exotic CSS, deeply nested TOCs, very large files).
 
-### Install pandoc and calibre for EPUB generation testing
-
-Install pandoc and calibre (ebook-convert) in the CI/development environment to generate EPUBs from scratch using different toolchains. This would allow testing epubverify against:
-
-- **Pandoc-generated EPUBs** — Pandoc produces EPUB3 from Markdown/HTML/LaTeX with its own internal templates and metadata handling. Known for minimal but correct output.
-- **Calibre-generated EPUBs** — Calibre's ebook-convert produces EPUBs from various input formats (HTML, DOCX, PDF, etc.) with its own post-processing pipeline. Widely used, exercises many edge cases.
-- **Custom-built EPUBs** — Use these tools to create EPUBs with specific edge-case features (MathML via pandoc+LaTeX, complex CSS, multi-language content, etc.) that are hard to find in the wild.
-
-Goal: expand the stress test corpus with toolchain-diverse EPUBs that exercise different code paths than the public domain libraries we already test.
-
 ### Enable Scheduled EPUB Crawl Workflow
 
 The `.github/workflows/epub-crawl.yml` workflow is currently manual-only (`workflow_dispatch`). After manual testing confirms the crawl pipeline works end-to-end, uncomment the `schedule` block to enable weekly automated runs (Sundays 06:00 UTC).
+
+### Additional Toolchain EPUB Generation Testing
+
+Extend the toolchain test suite (pandoc + calibre) with more EPUB generators to increase structural diversity. Each tool produces different OPF layouts, metadata patterns, and content document structures.
+
+**High value (easy to install, widely used):**
+
+- **ebooklib** (Python, `pip install ebooklib`) — Popular programmatic EPUB library used by many server-side apps. Writes its own OPF, NCX, and content documents from scratch with a distinct internal structure.
+- **asciidoctor-epub3** (Ruby, `gem install asciidoctor-epub3`) — Generates EPUB 3 from AsciiDoc markup. Entirely different toolchain (Ruby) with its own nav/OPF generation path.
+- **Sphinx** (Python, `pip install sphinx`) — Python documentation tool with EPUB builder. Common in technical documentation; exercises RST-to-EPUB conversion.
+
+**Medium value (heavier install, more niche):**
+
+- **tex4ebook** — LaTeX to EPUB via TeX4ht. Requires full TeX installation (~2GB+). Produces very different output: math-heavy content, complex CSS, unusual element structures.
+- **WeasyPrint** / other HTML-to-EPUB converters — Various smaller tools with their own quirks.
+
+**Difficult to automate (GUI-based):**
+
+- **Sigil** — Most popular open-source EPUB editor. Qt GUI app, hard to automate headlessly. Could manually export a few representative test EPUBs.
+
+Goal: each new tool exercises different code paths and structural patterns, increasing the chance of catching false positives/negatives in epubverify.
 
 ### CI Integration for Stress Tests
 
@@ -103,6 +115,47 @@ Add a CI job that downloads a cached set of test EPUBs, runs epubverify, compare
 ---
 
 ## COMPLETED
+
+### Install Pandoc and Calibre for EPUB Generation Testing — Complete
+
+Installed pandoc and calibre (ebook-convert) to generate EPUBs from scratch using different toolchains. Generated 20 EPUBs (9 pandoc, 10 calibre, 1 EPUB 2) from 6 diverse source content files, validated all against both epubverify and epubcheck 5.3.0.
+
+**Results: 20/20 verdict match (100% agreement)**
+
+**Source content (6 files):**
+
+| File | What it tests |
+|------|---------------|
+| `basic-prose.md` | Standard Markdown formatting, footnotes, tables, code blocks |
+| `multilingual.md` | 10 languages including CJK, Arabic RTL, Cyrillic, Greek |
+| `math-content.md` | LaTeX math → MathML via pandoc |
+| `complex-structure.md` | Deep nesting, definition lists, multiple authors, edge cases |
+| `minimal.md` | Minimal document — bare minimum content |
+| `rich-html.html` | HTML5 semantic elements, tables with tfoot, inline styling |
+
+**Generated EPUBs (20 total):**
+
+| Tool | Count | Configurations |
+|------|-------|----------------|
+| Pandoc | 9 | Default EPUB3, EPUB2, MathML, TOC, chapter split, custom CSS, from HTML |
+| Calibre | 10 | From HTML, from Markdown, styled, multilingual, with TOC, with cover, full metadata, no default styling |
+| EPUB 2 | 1 | Pandoc EPUB 2 output |
+
+**Bugs found and fixed (2 false negatives):**
+
+| Bug | Check | Fix |
+|-----|-------|-----|
+| HTML5 elements (`<article>`, `<footer>`, `<mark>`, `<time>`, `<aside>`, `<header>`) in EPUB 2 content not caught by full-EPUB validation | RSC-005 | Added `checkHTML5ElementsEPUB2()` call in `checkContentWithSkips()` for `Version < "3.0"` |
+| Colon-containing `id` attributes (`fn:1`, `fnref:2`) generated by calibre not caught | RSC-005 | Added `checkInvalidIDValues()` function to detect non-NCName id values |
+
+**Deliverables:**
+- Generation script: `stress-test/toolchain-epubs/generate-epubs.sh` (supports `--pandoc-only`, `--calibre-only`)
+- Validation script: `stress-test/toolchain-epubs/validate-epubs.sh` (verdict comparison + error code diff)
+- 6 source content files in `stress-test/toolchain-epubs/source-content/`
+- 10 new unit tests in `pkg/validate/content_test.go` (3 for invalid IDs, 7 for HTML5 elements in EPUB 2)
+- 6 stress tests in `test/stress/toolchain_test.go` (script existence, source diversity, feature checks)
+- Makefile targets: `toolchain-generate`, `toolchain-validate`, `toolchain-all`
+- Generated EPUBs and results are gitignored (regenerable)
 
 ### Verify and Fix Crawl Sources End-to-End — Complete
 
